@@ -1,15 +1,28 @@
 import NaoEncontrado from "../erros/NaoEncontrado.js";
-import {livro} from "../models/index.js"
+import {autor, livro} from "../models/index.js"
+import RequisicaoIncorreta from "../erros/RequisicaoIncorreta.js"
 
 class LivroController {
 
     static listarLivros = async (req, res, next) => {
         try {
-          const livrosResultado = await livro.find()
-            .populate("autor")
-            .exec();
+          let {limite = 5, pagina = 1} = req.query
+
+          limite = parseInt(limite)
+          pagina = parseInt(pagina)
+
+          if(limite > 0 && pagina > 0) {
+            const livrosResultado = await livro.find()
+              .skip((pagina - 1) * limite)
+              .limit(limite)
+              .populate("autor")
+              .exec()
           
-          res.status(200).json(livrosResultado);
+            res.status(200).json(livrosResultado);
+          } else {
+            next(new RequisicaoIncorreta())
+          }
+
           
         } catch (erro) {
             next(erro)
@@ -26,7 +39,7 @@ class LivroController {
 
           if (livroResultados !== null) {
               res.status(200).json(livroResultados);
-          } else {
+          } else { 
               next(new NaoEncontrado("Id do livro não encontrado"))
           }
         } catch (erro) {
@@ -80,10 +93,11 @@ class LivroController {
 
       static listarLivroPorFiltro = async (req, res, next) => {
         try {
-          const busca = processaBusca(req.query)
+          const busca = await processaBusca(req.query)
     
-          const livrosResultado = await livro.find(busca);
-    
+          const livrosResultado = await livro
+            .find(busca)
+  
           res.status(200).send(livrosResultado);
         } catch (erro) {
             next(erro)
@@ -92,8 +106,8 @@ class LivroController {
 
 }
 
-function processaBusca(paramentro) {
-  const {editora, titulo, minPagina, maxPaginas} = paramentro;
+async function processaBusca(paramentro) {
+  const {editora, titulo, minPagina, maxPaginas, nomeAutor} = paramentro;
   //const regex = new RegExp(titulo, "i")
   const busca = {}
 
@@ -106,6 +120,15 @@ function processaBusca(paramentro) {
   // lte = less than or equal = menor ou igual que
   if(maxPaginas) busca.paginas.$lte = maxPaginas
 
+  if (nomeAutor) {
+    const autorEncontrado = await autor.findOne({ nome: nomeAutor });
+    if (autorEncontrado) {
+      busca.autor = autorEncontrado._id.toString(); 
+    } else {
+      throw new NaoEncontrado("Autor não encontrado");
+    }
+  }
+  console.log(busca)
   return busca
 }
 
